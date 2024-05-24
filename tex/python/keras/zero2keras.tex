@@ -1,0 +1,224 @@
+% 导入基础文件，包括字体、预定义环境，
+% 页面大小文件暂时不用，故暂不导入
+\input "/home/lxin49/Documents/tex/include/chnfonts.tex"
+\input "/home/lxin49/Documents/tex/include/env.tex"
+%\input "/home/lxin49/Documents/tex/include/pagesl.tex"
+
+% 特殊要求修改
+\setuppagenumbering[location={bottom,middle}]
+
+% 开始正文
+\starttext
+
+\title{从零开始学习Keras}
+
+\section{为什么要写这份文档}
+
+写这份文档的首要目的是积累技术栈，从无到有，从零到一。对于机器学习，传统的ML方法，有一些认识，在这里不展开。DL的方法，一开始了解一些基本概念，什么是神经元、感知机、卷积、池化，但还是比较片面，想要深入地了解和学习DL相关知识，于是开始Keras的学习。
+
+写这份文档的时候，已经把Keras囫囵吞枣地看了一遍，主要材料是keras.io的官方教程，除了API的文档，把整个流程做了一次大致的了解。整个完成后的感觉是，了解怎么使用Keras仅仅是第一步，能了解一些API的调用；而运用一些偏底层的API能稍微增加一些关于原理性的理解，以及增加使用API的熟练度，偶发性地增加些许成就感。除此以外，关于理论方面的，比如梯度下降、卷积、池化等还是局限于已获取的知识点，没有增加。又比如评估函数(metrics)、损失函数(losses)、优化器(optimizors)等等，了解得就更少，暂时只能使用而不知原理；各种同类函数之间的区别以及适用场景也不甚了解；在使用过程中有没有trick，也没有经验。这一块后期需要逐个了解评估函数、损失函数、优化器的优劣、适用场景等等，适用场景的目标是熟练掌握。
+
+关于这份文档我的想法是分成三个部分：（1）怎么样直接调用API搭建网络，大概会包含网络搭建、数据灌入、训练及保存（这部分可能会以callbacks展开），尽量附带去讨论一些高级API不能实现的情形；（2）怎么样使用偏底层的API搭建网络，大概会包括网络搭建、数据预处理，尽量附带去讨论关于梯度的一些话题；（3）可能会讨论一下超参，主要是keras-tuner的使用，如果能写得出来，会尽量写keras-tuner在自定义模型中的应用（大概率写不出来），另外作为一个附带部分，回顾一下在整个过程中遇到的tensorflow的偏底层的函数或接口。
+
+最后我想通过这份文档，加深巩固记忆。当然这份文档中的知识点还是比较浅层的，后续可能会更新v2版本，以期待有更深入的理解。
+
+{\bi 注1：由于本人tex掌握不熟练，本文档中的代码实现将采用截图方式}
+
+{\bi 注2：所有代码中import的部分，首次导入会写，其余都假设已经导入}
+
+{\bi 注3：文档中keras和tensorflow的版本均为2.6.0}
+
+\section{怎么样通过高级API实现模型}
+
+这部分主要想的是这么几个内容：（1）通过高级API实现网络搭建，尽可能把API提供的搭建方式都进行罗列，可能会简单讨论高级API不能实现的几种情况（我尽量吧）；（2）网络搭建好后怎么把数据灌入，这里不是讨论预处理，而是讨论大量数据下，不能将数据一次性读入到内存，通过使用队列或者生成器的方式把数据灌入模型；（3）模型训练、保存，将以callbacks展开
+
+\subsection{通过高级API实现网络搭建}
+
+\subsubsection{简单的网络搭建}
+
+通过Keras高级API实现网络搭建有两种方法，也可以说有三种方法，要么是借助keras.Sequential实现，要么是借助FunctionalAPI实现，其中有两种都是通过keras.Sequential实现，所以也可以说是两种方法。下面是代码：
+
+\placefigure[force,nonumber]{\bi 创建网络}\externalfigure[fig/1_create_net.png][width=325pt]
+
+其中model1, model2, model3均为3层全链接层的结构，那这3个模型有没有区别呢？答案是肯定的。明显的区别是model2比model1多了一个layers.InputLayer，而model3则是keras.Input，layers.InputLayer和keras.Input的作用是一样的。那不明显的区别有没有呢？请尝试运行下面的代码：
+
+\placefigure[force,nonumber]{\bi 查看网络结构}\externalfigure[fig/2_show_architecture.png][width=185pt]
+
+通过运行可以发现，尝试查看model1的网络结构时报错了，model2的网络结构比model3少了一个InputLayer。因为model1没有经过build或fit方法，网络结构虽然成型，但由于没有输入层的形状没有确定，权重参数无法初始化，故无法输出网络结构及参数统计。model2可能是调用Sequential的缘故，所有Sequential模型在显示模型结构时都不显示输入层的大小。
+
+那如果想看model1的网络结构，除了用model2的方法外，还有其他方法吗？有的。
+
+\placefigure[force,nonumber]{\bi 构建模型}\externalfigure[fig/3_build_model.png][width=195pt]
+
+需要注意的是，.build传入的是(batch,input_shape)
+
+\subsubsection{网络搭建的几个小例子}
+
+全链接层(Dense)的例子在简单的网络搭建中已举例，这个部分再找一些其他例子，目前在CV领域使用得比较多的基础模块是卷积和池化，在NLP领域使用得比较多的基础模块是RNN,LSTM,GRU,以及反卷积。反卷积在CV领域的图像对抗或者生成网络中应用得也比较广泛。在下面的例子中，仅仅是列举，具体的用法及参数不在此处罗列。
+
+{\bf 卷积+池化+全链接}
+
+\placefigure[force,nonumber]{}\externalfigure[fig/4_CNN.png][width=555pt]
+
+{\bf 卷积+全局池化+全链接}
+
+\placefigure[force,nonumber]{}\externalfigure[fig/5_CNN.png][width=560pt]
+
+{\bf SimpleRNN/LSTM/GRU}
+
+\placefigure[force,nonumber]{}\externalfigure[fig/6_RNN.png][width=350pt]
+
+{\bf 反卷积}
+
+\placefigure[force,nonumber]{}\externalfigure[fig/7_transpose2d.png][width=390pt]
+
+上面这几个小例子是比较常见的，也是复杂模型搭建的基础，需要反复熟悉。此外，模型搭建，特别是成熟模型，需要不停尝试去搭建，才能有一些感觉。
+
+\subsubsection{实现微型的残差网络}
+
+\placefigure[force,nonumber]{}\externalfigure[fig/8_resnet.png][width=305pt]
+
+\subsubsection{实现微型的对抗生成网络}
+
+\placefigure[force,nonumber]{\bi 鉴别网络}\externalfigure[fig/9_discriminator.png][width=450pt]
+
+\placefigure[force,nonumber]{\bi 生成网络}\externalfigure[fig/10_generator.png][width=495pt]
+
+\placefigure[force,nonumber]{\bi 对抗生成网络}\externalfigure[fig/11_GAN.png][width=595pt]
+
+在写这个微模型的时候，不停犯错，犯错的地方主要包括self.__init__()中的inputs和outputs，compile()里的super().compile()，训练时输入的形状没做reshape，训练时输入的dtype没有强制转为float32。除了犯错，我还有一个比较大的疑惑，那就是生成网络中fakes的标签应该以0还是1传入训练？其实我在mnist上都试过，效果不行。
+
+\subsubsection{小结}
+
+这个部分主要回顾了：
+\startitemize
+{\bi
+\item 两个创建模型的方法：keras.Sequential和keras.Model，需要注意输入层的选择
+\item 常见层使用和简易网络搭建：Dense,Conv2D,MaxPool2D，SimpleRNN,LSTM,GRU等层，全连接+卷积池化搭建
+\item 不常见层的介绍和稍复杂的网络搭建：Conv2DTranspose层，残差网络，生成对抗网络
+}
+\stopitemize
+
+这个部分的最后一个示例代码，里面涉及到两块内容：一是通过继承keras.Model自定义模型，里面使用的主要是一些偏底层的API。二是在这个GAN模型里自定义了compile函数，用于接收优化器参数；train_step函数，用于定义训练过程，包括损失计算、反向传播（评估函数虽然在这个例子里没有体现，但也是在train_step里通过metrics_fn进行计算，并在return里返回），与model.fit对应；call函数，与model(x)对应。
+
+为什么会用对抗生成网络的例子，因为这个例子只能自定义，通过keras.Sequential或者keras.Model创建的网络只能接收一个优化器，而对抗生成网络需要多个优化器甚至损失函数，凡是需要多个优化器或者损失函数的，需要继承后自定义创建。
+
+当然，DL和Keras里还有很多东西，特别是在NLP领域里，这个部分几乎没怎么提到。先在CV领域，有一些了解，再逐渐熟悉NLP领域。
+
+\subsection{数据处理方式}
+
+这个部分，我原不想讨论预处理，只想讨论数据灌入，少量数据通过numpy数组，中大量数据通过API或者自定义squeue实现。但由于后两种方式可能涉及到数据对齐的问题，便会在中间穿插预处理的方法。结构上会分成三部分，依次是numpy数组，Image，Text。
+
+\subsubsection{NumPy数组处理}
+
+在tensorflow或者keras中处理NumPy数组，主要有两个问题，灌入模型和预处理。先看灌入模型：
+
+\placefigure[force,nonumber]{\bi NumPy数组批量导入}\externalfigure[fig/12_tensor_from_slices.png][width=415pt]
+
+接下来看预处理：
+
+\placefigure[force,nonumber]{\bi 归一化/标准化}\externalfigure[fig/13_normalization.png][width=550pt]
+
+csv文件的灌入：
+
+\placefigure[force,nonumber]{\bi 从csv批量读取数据}\externalfigure[fig/14_make_csv_dataset.png][width=500pt]
+
+\subsubsection{图像数据处理}
+
+图像数据处理和NumPy数据处理类似，直接上操作。灌入模型：
+
+\placefigure[force,nonumber]{\bi 从文件夹读取图像数据}\externalfigure[fig/15_image_dataset.png][width=470pt]
+
+图像数据的预处理主要包括归一化和标准化，与NumPy数组操作类似。另外有的操作是图像增强，包括：旋转，剪裁等等。
+
+\placefigure[force,nonumber]{\bi 图像增强}\externalfigure[fig/16_images_preprocessing.png][width=435pt]
+
+\subsubsection{文本数据处理}
+
+文本数据处理和以上两类数据处理有所不同，主要在于文本编码。照惯例，先上灌入模型：
+
+\placefigure[force,nonumber]{\bi 从文件夹读取文本数据}\externalfigure[fig/17_text_dataset.png][width=505pt]
+
+由于中文与英文等的断字断句位置情况不同，一般直接读取txt文件无法有效断字、断句并形成词组或词向量。按我的习惯和喜好，更愿意采用队列方式去读取文件。
+
+\placefigure[force,nonumber]{\bi 手动创建队列并实现预处理}\externalfigure[fig/18_text_sequence.png][width=505pt]
+
+\subsubsection{小结}
+
+这个部分主要是接触了3种类型的数据：NumPy数据，图像数据，文本数据。本质上来说，图像数据也是一种NumPy数据，固定形式为(高，宽，通道)的三维NumPy数据。文本数据一般无法直接使用，需要转换为词向量（本质也是一种NumPy数据），我已知的有jieba先分词，再用one_hot转为向量，也有用gensim模块进行word2vec训练的（这部分我还没接触过，以后再接触），也有用tensorflow或者pytorch的Embedding层进行训练词向量的（在接触文本预处理的部分在知乎看了点，不多）。
+
+下面小结：
+
+\startitemize
+{\bi
+\item NumPy数据的特征缩放（归一化/标准化）
+\item 图像数据的旋转，缩放，裁剪
+\item 文本数据的编码
+\item 三种文件格式的读取
+\item 队列对象的构建，继承自keras.utils.Sequence，至少两个方法__len__, __getitem__
+}
+\stopitemize
+
+\subsection{模型的训练及保存}
+
+在完成了模型搭建和数据准备之后，就可以开始模型训练、模型训练过程的可视化查看，模型训练完成后的模型保存。
+
+\subsubsection{模型训练}
+
+\placefigure[force,nonumber]{\bi 模型训练}{\externalfigure[fig/19_model_fit.png][width=480pt]}
+
+模型训练中比较重要的部分是model.compile，这个函数里可以一般有3个参数，optimizer(优化器)，loss(损失函数)，metrics(评估函数)，这3个参数里优化器和损失函数是必要的，评估函数可以没有。如果是自定义模型或者是自定义损失函数（评估函数），可以不存在损失函数和评估函数，甚至是优化器。（可能在第三部分会涉及）
+
+\subsubsection{模型训练可视化 - callbacks}
+
+\placefigure[force,nonumber]{\bi callbacks}{\externalfigure[fig/20_callbacks.png][width=585pt]}
+
+\subsubsection{模型保存和载入}
+
+\placefigure[force,nonumber]{\bi 保存和载入}{\externalfigure[fig/21_save_load_model.png][width=445pt]}
+
+\subsubsection{小结}
+
+\startitemize
+{\bi
+\item model.fit
+\item callbacks
+\item model.save, model.save_weights, keras.models.load_model, model.load_weights
+}
+\stopitemize
+
+\section{怎么样通过偏底层API实现模型}
+
+这份文档的主要内容集中在第二部分。这部分的原意是只想讨论模型搭建中偏底层API的使用，这个内容其实在第二部分的GAN网络介绍时中有体现，这部分会更详细地回顾一下。额外的就是回顾下损失函数和评估函数的偏底层API使用。
+
+\subsection{模型搭建的偏底层API使用}
+
+除了GAN网络，再给一个VGG的例子。这个VGG里面主要包括__init__，compile，call，train_step这四个函数，在这个VGG类里面，compile和train_step不是必须的，因为都没涉及到自定义的部分，如果有则需要添加对应内容。还有一个test_step函数未在代码中体现，对应的功能是model.fit中的validation_data部分，如果验证集的运行与训练集运行有区别，可以通过自定义test_step方式实现。此外，该模型中包含了一个名为create_blocks的函数，用于封装部分重复操作。
+
+除了上面的函数及封装，VGG里面包含了一些预处理的功能，包括随机裁剪、中心裁剪、特征缩放几个功能，如有其他预处理需求，在相应模块增加。
+
+\placefigure[force,nonumber]{\bi 手写模型}{\externalfigure[fig/22_vgg.png][width=535pt]}
+
+\subsection{损失函数自定义的偏底层API使用}
+
+\placefigure[force,nonumber]{\bi 自定义损失函数}{\externalfigure[fig/23_custom_loss.png][width=440pt]}
+
+确实我对自定义Loss不熟悉，只能把自定义损失函数的类先放在这里。
+
+我又去看了下文档，比较重要的应该是call函数。call函数的运行就决定了损失值大小，如果有y_true和y_pred以外的参数，可以在__init__函数里进行传参。
+
+\subsection{评估函数自定义的偏底层API使用}
+
+\placefigure[force,nonumber]{\bi 自定义评估函数}{\externalfigure[fig/24_custom_metric.png][width=550pt]}
+
+确实我对自定义Metric不熟悉，只能把自定义评估函数的类先放在这里。
+
+\subsection{小结}
+
+这部分主要回顾了自定义Model，自定义Loss，自定义Metric，除了Model我写了一个例子，另外两个都只列示了写法，并没有写例子，是因为确实没有什么比人家框架更好的算法。另外，Model的保存因为少写了get_config和from_config而折腾了半天，图我也不打算补了，先就这样。需要注意，from_config是类方法，另外用callbacks.ModelCheckpoint保存的是model_weights。
+
+\section{关于超参}
+
+好吧，最后我部分我水了，其实是没有学透彻。全篇完。
+
+\stoptext
