@@ -1,0 +1,54 @@
+% 导入字体、预设环境等
+\input "/home/lxin49/Documents/tex/include/chnfonts.tex"
+\input "/home/lxin49/Documents/tex/include/env.tex"
+
+% 设置页码位置
+\setuppagenumbering[location={bottom,middle}]
+
+\starttext
+
+\title{学习torch过程中的一些记录}
+
+\section{用法}
+
+\subsection{@}
+\startitemize
+\item output = tensor1 @ tensor2
+\item output = tensor1.matmul(tensor2)
+\item output = torch.matmul(tensor1,tensor2)
+\item output = torch.matmul(tensor1,tensor2,out=output)
+\stopitemize
+
+\subsection{tensorboard}
+from torch.utils.tensorboard import SummayWriter
+
+\subsection{一种np的升维操作}
+masks = mask == obj_ids[:, None, None]
+mask是一个二维数组
+obj_ids是一个一维数组，里面的值均在mask的值范围内
+得到的masks是一个三维数组
+
+\section{函数}
+
+\startitemize
+\item torch.rand_like
+\item torch.randn
+\item torch.randint
+\item torch.mul
+\item torch.add_
+\item torch.from_numpy
+\item torch.scatter_
+\item torch.nn.Linear, torch.nn.Sigmoid, ...
+
+\stopitemize
+
+\subsection{torch.scatter_}
+官方文档给出了3维张量操作说明:
+
+self[index[i][j][k]][j][k] = src[i][j][k]  , if dim == 0
+
+self[i][index[i][j][k]][k] = src[i][j][k]  , if dim == 1
+
+self[i][j][index[i][j][k]] = src[i][j][k]  , if dim == 2
+
+\stoptext
